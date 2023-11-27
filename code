@@ -1,0 +1,84 @@
+SSTP server on Ubuntu 16+
+apt update && apt install python3 python3-pip ppp openssl iptables-persistent -y
+mkdir -p /usr/local/local && cd $_ && openssl req -newkey rsa:2048 -nodes -keyout privkey.pem -x509 -days 365 -out cert.pem
+where:
+
+Country Name (2 letter code) [AU]:
+State or Province Name (full name) [Some-State]:
+Locality Name (eg, city) []:
+Organization Name (eg, company) [Internet Widgits Pty Ltd]:
+Organizational Unit Name (eg, section) []:
+Common Name (e.g. server FQDN or YOUR name) []: server_ip_address
+Email Address []:
+pip3 install sstp-server
+add to /etc/ppp/options.sstpd
+
+name sstpd
+refuse-pap
+refuse-chap
+refuse-mschap
+require-mschap-v2
+nologfd
+nodefaultroute
+ms-dns 8.8.8.8
+ms-dns 8.8.4.4
+add to /etc/ppp/chap-secrets
+
+user1 * passwd1 *
+user2 * passwd2 *
+add to /etc/sstpd.ini
+
+[DEFAULT]
+# 1 to 50. Default 20, debug 10, verbose 5
+;log_level = 20
+
+# OpenSSL cipher suite. See ciphers(1).
+;cipher = EECDH+AESGCM:EDH+AESGCM:AES256+EECDH:AES256+EDH
+
+# Path to pppd
+;pppd = /usr/bin/pppd
+
+# pppd config file path
+;pppd_config = /etc/ppp/options.sstpd
+
+# SSTP port
+listen = 0.0.0.0
+listen_port = 443
+
+# PEM-format certificate with key.
+pem_cert = /usr/local/local/cert.pem
+pem_key = /usr/local/local/privkey.pem
+
+# Address of server side on ppp.
+local = 192.168.0.1
+
+# If RADIUS is used to mangle IP pool, comment it out.
+remote = 192.168.0.0/24
+enable IPv4 forward in /etc/sysctl.conf (uncomment or add)
+
+net.ipv4.ip_forward=1
+reload configuration
+
+sysctl -p
+add & save rule in iptables (change eth0 to your interface)
+
+iptables -t nat -A POSTROUTING -s 192.168.0.0/24 -o eth0 -j MASQUERADE
+iptables-save > /etc/iptables/rules.v4
+add service to /etc/systemd/system/sstpd.service
+
+[Unit]
+Description=sstpd
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/sstpd -f /etc/sstpd.ini
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
+run
+
+systemctl start sstpd.service
+systemctl enable sstpd
